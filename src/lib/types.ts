@@ -1,5 +1,5 @@
 export type Role = 'worker' | 'supervisor' | 'hse'
-export type EnergyType = 'electrical' | 'pneumatic' | 'hydraulic' | 'mechanical' | 'thermal' | 'gravitational' | 'chemical' | 'stored'
+export type EnergyType = 'electrical' | 'pneumatic' | 'hydraulic' | 'water' | 'gas' | 'mechanical' | 'thermal' | 'gravitational' | 'chemical' | 'stored'
 export type ProcedureStatus = 'draft' | 'pendingApproval' | 'approved' | 'needsRevision' | 'archived'
 export type LotoStatus = 'isolating' | 'active' | 'restoring' | 'closed'
 export type StepKind = 'preparation' | 'isolation' | 'lockout' | 'restoration'
@@ -22,19 +22,28 @@ export interface Equipment {
 export interface IsolationPoint {
   id: string; code: string; name: string; energy: EnergyType; location: string
   method: string; lock: string; verification: string; photo_path?: string | null
+  /** false = bod se neuzamyká (např. odložení břemene, odvzdušnění); chybí-li, bod se uzamyká */
+  lockable?: boolean
 }
-export interface PrepStep { title: string; detail: string }
+/** warning = upozornění na specifické riziko, na kartě v červeném rámečku */
+export interface PrepStep { title: string; detail: string; warning?: boolean }
 export interface Revision { revision: number; at: string; by: string; summary: string }
 export interface Procedure {
   id: string; company_id: string; equipment_id: string; name: string; revision: number; status: ProcedureStatus
   author_name: string; approver_name: string | null; approved_at: string | null; next_review_date: string | null
   last_reviewed_at: string | null; last_reviewed_by: string | null; review_interval_months: number
   ppe: string[]; preparation: PrepStep[]; restoration: string[]; points: IsolationPoint[]; revisions: Revision[]; updated_at: string
+  /** přehledová fotografie nebo nákres zařízení s vyznačenými izolačními body */
+  overview_photo_path?: string | null
 }
 export interface LotoStep {
   id: string; kind: StepKind; title: string; instruction: string
   point_id?: string; point_code?: string; point_name?: string; energy?: EnergyType; required_lock?: string
   done: boolean; at?: string; by?: string; lock?: string; photo_path?: string; qr?: boolean
+  /** personal = osobní zámek (jediný bod nebo LOTO box), field = terénní zámek na izolačním bodu; chybí-li, osobní */
+  lock_kind?: 'personal' | 'field'
+  /** krok uzamčení LOTO boxu */
+  lockbox?: boolean
 }
 export interface Participant { user_id: string; name: string; personal_number: string; lock: string; role: Role; joined_at: string; removed_at?: string }
 export interface TimelineEntry { at: string; kind: string; title: string; detail: string; actor: string }

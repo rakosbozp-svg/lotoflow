@@ -13,7 +13,7 @@ export default function Scanner() {
   const app = useApp()
   const navigate = useNavigate()
   const [found, setFound] = useState<{ e: Equipment; p: IsolationPoint } | null>(null)
-  const demo = ['LOTOMACHINE:MIX-004', 'LOTOPOINT:MIX-004:Q01', 'LOTOMACHINE:LIS-002', 'LOTOMACHINE:XYZ-999', 'https://example.com/neznamy']
+  const demo = ['LOTOMACHINE:MIX-004', 'LOTOPOINT:MIX-004:E1', 'LOTOMACHINE:LIS-002', 'LOTOMACHINE:XYZ-999', 'https://example.com/neznamy']
 
   const onCode = (raw: string) => {
     const q = parseQR(raw)

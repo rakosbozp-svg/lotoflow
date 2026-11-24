@@ -213,7 +213,7 @@ function DefectsSection({ equipmentId }: { equipmentId: string }) {
             {(['note', 'minor', 'major', 'critical'] as Severity[]).map((s) => <button key={s} className={`chip ${severity === s ? 'on' : ''}`} onClick={() => setSeverity(s)}>{SEVERITY_TITLE[s]}</button>)}
           </div>
           <div className="tiny">Nevyřešené závady kromě poznámky se zobrazí jako varování před zahájením LOTO.</div>
-          <input className="input" placeholder="Co je špatně (např. poškozená visačka u Q01)" value={title} onChange={(ev) => setTitle(ev.target.value)} />
+          <input className="input" placeholder="Co je špatně (např. poškozená visačka u E1)" value={title} onChange={(ev) => setTitle(ev.target.value)} />
           <textarea className="input" placeholder="Kde, od kdy, jaké riziko…" value={detail} onChange={(ev) => setDetail(ev.target.value)} />
           <PhotoInput file={photo} onChange={setPhoto} />
           <ErrorBox message={act.error} />

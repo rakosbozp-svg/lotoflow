@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import QRCode from 'qrcode'
 import { Printer } from 'lucide-react'
 import { useApp, useCtx } from '../lib/store'
-import { ENERGY_TITLE, currentProcedure, machineQR, pointQR } from '../lib/rules'
+import { ENERGY_TITLE, codeColor, currentProcedure, machineQR, pointQR } from '../lib/rules'
 import { audit } from '../lib/api'
 import { Button, Card, Empty, SectionHeader, TopBar } from '../components/ui'
 
-interface LabelItem { id: string; kind: 'machine' | 'point'; title: string; code: string; subtitle: string; payload: string }
+interface LabelItem { id: string; kind: 'machine' | 'point'; title: string; code: string; subtitle: string; payload: string; bg: string; fg: string }
 
 export default function Labels() {
   const app = useApp()
@@ -21,9 +21,10 @@ export default function Labels() {
     const out: LabelItem[] = []
     for (const e of app.equipment.filter((x) => (!site || x.site_id === site) && (!workplace || x.workplace_id === workplace)).sort((a, b) => a.code.localeCompare(b.code))) {
       const place = [app.sites.find((s) => s.id === e.site_id)?.name, app.workplaces.find((w) => w.id === e.workplace_id)?.name].filter(Boolean).join(' · ')
-      out.push({ id: `m-${e.id}`, kind: 'machine', title: e.name, code: e.code, subtitle: place, payload: machineQR(e.code) })
+      out.push({ id: `m-${e.id}`, kind: 'machine', title: e.name, code: e.code, subtitle: place, payload: machineQR(e.code), bg: '#1C2536', fg: '#FFFFFF' })
       for (const pt of currentProcedure(app.procedures, e.id)?.points ?? []) {
-        out.push({ id: `p-${pt.id}`, kind: 'point', title: pt.name, code: `${e.code} · ${pt.code}`, subtitle: ENERGY_TITLE[pt.energy], payload: pointQR(e.code, pt.code) })
+        const c = codeColor(pt.code, pt.energy)
+        out.push({ id: `p-${pt.id}`, kind: 'point', title: pt.name, code: `${e.code} · ${pt.code}`, subtitle: ENERGY_TITLE[pt.energy], payload: pointQR(e.code, pt.code), bg: c.bg, fg: c.fg })
       }
     }
     return out
@@ -85,7 +86,7 @@ export default function Labels() {
         <div className="labels">
           {chosen.map((i) => (
             <div key={i.id} className="label">
-              <span className="head" style={{ background: i.kind === 'point' ? '#d11c1c' : '#0d5cd9' }}>{i.kind === 'point' ? 'LOTO · IZOLAČNÍ BOD' : 'LOTO · ZAŘÍZENÍ'}</span>
+              <span className="head" style={{ background: i.bg, color: i.fg }}>{i.kind === 'point' ? 'LOTO · IZOLAČNÍ BOD' : 'LOTO · ZAŘÍZENÍ'}</span>
               {images[i.id] && <img src={images[i.id]} alt={i.payload} />}
               <b className="mono" style={{ fontSize: '13pt' }}>{i.code}</b>
               <span style={{ fontSize: '10pt', fontWeight: 600 }}>{i.title}</span>

@@ -5,8 +5,8 @@ import type {
   TimelineEntry, Workplace,
 } from './types'
 import {
-  HANDOVER_CHECKS, LOCK_REMOVAL_INDEX, RESTORATION_SEQUENCE, SEVERITY_TITLE, ZERO_ENERGY_CHECKS, addMonths, currentProcedure,
-  energySignature, fmtDate, fmtDuration, lockNumber, missingItems, parseQR, pointQR, uid,
+  HANDOVER_CHECKS, LOCK_REMOVAL_INDEX, RESTORATION_SEQUENCE, SEVERITY_TITLE, addMonths, currentProcedure,
+  energySignature, fmtDate, fmtDuration, isLockable, lockNumber, missingItems, parseQR, pointQR, uid,
 } from './rules'
 
 export interface Ctx { profile: Profile; company: Company }
@@ -103,18 +103,32 @@ export async function startLoto(ctx: Ctx, e: Equipment, procs: Procedure[], reas
   if (!p) throw new Error('Zařízení nemá LOTO postup.')
   const steps: LotoStep[] = []
   for (const s of p.preparation) {
-    steps.push({ id: uid(), kind: 'preparation', title: s.title, instruction: s.detail, done: false })
+    steps.push({ id: uid(), kind: 'preparation', title: s.warning ? `Upozornění: ${s.title}` : s.title, instruction: s.detail, done: false })
   }
+  // Více uzamykacích bodů = terénní zámky na bodech, klíče do LOTO boxu, box uzamčen osobním zámkem.
+  const useBox = p.points.filter(isLockable).length > 1
   for (const pt of p.points) {
     const lines = [pt.method, pt.location && `Umístění: ${pt.location}`, pt.verification && `Ověření: ${pt.verification}`].filter(Boolean)
     steps.push({
       id: uid(), kind: 'isolation', title: `Izolujte ${pt.code} – ${pt.name}`, instruction: lines.join('\n'),
       point_id: pt.id, point_code: pt.code, point_name: pt.name, energy: pt.energy, required_lock: pt.lock, done: false,
     })
+    if (!isLockable(pt)) continue
+    const prvek = pt.lock ? pt.lock.toLowerCase() : 'LOTO prvek'
     steps.push({
       id: uid(), kind: 'lockout', title: `Uzamkněte ${pt.code}`,
-      instruction: `Připevněte ${pt.lock ? pt.lock.toLowerCase() : 'osobní visací zámek'} a vyplněnou LOTO visačku. Zámek vyfoťte.`,
+      instruction: useBox
+        ? `Uzamkněte bod (${prvek}) terénním zámkem z LOTO stanice a připevněte vyplněnou visačku. Klíč vložte do LOTO boxu. Zámek vyfoťte.`
+        : `Uzamkněte bod (${prvek}) svým osobním zámkem a připevněte vyplněnou visačku. Zámek vyfoťte.`,
       point_id: pt.id, point_code: pt.code, point_name: pt.name, energy: pt.energy, required_lock: pt.lock, done: false,
+      lock_kind: useBox ? 'field' : 'personal',
+    })
+  }
+  if (useBox) {
+    steps.push({
+      id: uid(), kind: 'lockout', title: 'Uzamkněte LOTO box', point_code: 'BOX', point_name: 'LOTO box',
+      instruction: 'Ověřte, že jsou v LOTO boxu klíče od všech terénních zámků. Uzamkněte LOTO box svým osobním zámkem s vyplněnou visačkou. Zámek vyfoťte.',
+      done: false, lock_kind: 'personal', lockbox: true,
     })
   }
   const me = ctx.profile
@@ -141,10 +155,10 @@ export async function confirmStep(ctx: Ctx, lotoId: string, stepId: string, o: {
     if (!step || step.id !== stepId) throw new Error('Kroky se potvrzují v pořadí podle postupu.')
     if (step.kind === 'lockout') {
       const lock = (o.lock ?? '').trim().toUpperCase()
-      if (!lock) throw new Error('Zadejte číslo osobního zámku.')
+      if (!lock) throw new Error(step.lock_kind === 'field' ? 'Zadejte číslo terénního zámku.' : 'Zadejte číslo osobního zámku.')
       if (!o.photoPath) throw new Error('Uzamčení je nutné doložit fotografií.')
       step.lock = lock
-      if (!activeParticipants(l).some((p) => p.user_id === ctx.profile.id)) {
+      if (step.lock_kind !== 'field' && !activeParticipants(l).some((p) => p.user_id === ctx.profile.id)) {
         l.participants.push({ user_id: ctx.profile.id, name: ctx.profile.full_name, personal_number: ctx.profile.personal_number, lock, role: ctx.profile.role, joined_at: now() })
       }
       l.timeline.push(entry(ctx, 'locked', `${step.point_code} uzamčen zámkem ${lock}`))
@@ -188,15 +202,16 @@ export async function verifyPoint(ctx: Ctx, lotoId: string, stepId: string, raw:
   return result
 }
 
-export async function verifyZeroEnergy(ctx: Ctx, lotoId: string, checks: string[]) {
+/** required = body ověření podle postupu (zeroChecksFor), checks = body potvrzené na místě. */
+export async function verifyZeroEnergy(ctx: Ctx, lotoId: string, required: string[], checks: string[]) {
   const loto = await mutateLoto(lotoId, (l) => {
     if (l.status !== 'isolating' || nextLockout(l)) throw new Error('Nejprve dokončete všechny kroky izolace a uzamčení.')
-    if (!ZERO_ENERGY_CHECKS.every((c) => checks.includes(c))) throw new Error('Potvrďte všechny body ověření nulového energetického stavu.')
-    l.zero_checks = ZERO_ENERGY_CHECKS
+    if (!required.length || !required.every((c) => checks.includes(c))) throw new Error('Potvrďte všechny body ověření nulového energetického stavu.')
+    l.zero_checks = required
     l.zero_verified_at = now()
     l.zero_verified_by = ctx.profile.full_name
     l.status = 'active'
-    l.timeline.push(entry(ctx, 'verified', 'TRY test dokončen – nulový energetický stav ověřen', ZERO_ENERGY_CHECKS.join(' · ')))
+    l.timeline.push(entry(ctx, 'verified', 'TRY test dokončen – nulový energetický stav ověřen', required.join(' · ')))
     l.timeline.push(entry(ctx, 'workAuthorized', 'Práce povolena'))
   })
   await audit(ctx, 'zeroEnergyVerified', `Ověřen nulový energetický stav – ${loto.equipment_name}, práce povolena`, { loto })
@@ -336,6 +351,7 @@ export async function saveEquipment(ctx: Ctx, existing: Equipment | null, d: Equ
 
 export interface ProcedureDraft {
   name: string; review_interval_months: number; ppe: string[]; preparation: PrepStep[]; points: IsolationPoint[]; restoration: string[]
+  overview_photo_path: string | null
 }
 
 export async function saveProcedure(ctx: Ctx, existing: Procedure | null, e: Equipment, d: ProcedureDraft, summary: string): Promise<Procedure> {
@@ -350,9 +366,10 @@ export async function saveProcedure(ctx: Ctx, existing: Procedure | null, e: Equ
     author_name: existing?.author_name || ctx.profile.full_name, approver_name: null, approved_at: null,
     review_interval_months: Math.max(1, d.review_interval_months),
     ppe: d.ppe.map((s) => s.trim()).filter(Boolean),
-    preparation: d.preparation.filter((s) => s.title.trim()).map((s) => ({ title: s.title.trim(), detail: s.detail.trim() })),
+    preparation: d.preparation.filter((s) => s.title.trim()).map((s) => ({ title: s.title.trim(), detail: s.detail.trim(), ...(s.warning ? { warning: true } : {}) })),
     restoration: d.restoration.map((s) => s.trim()).filter(Boolean),
     points: d.points.map((p) => ({ ...p, code: p.code.trim().toUpperCase(), name: p.name.trim(), location: p.location.trim(), method: p.method.trim(), lock: p.lock.trim(), verification: p.verification.trim() })),
+    overview_photo_path: d.overview_photo_path,
     revisions: [...(existing?.revisions ?? []), { revision, at: now(), by: ctx.profile.full_name, summary: text }],
     updated_at: now(),
   }

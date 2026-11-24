@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import { useApp, useCtx } from '../lib/store'
-import { ENERGY_TITLE, ENERGY_TYPES, currentProcedure, uid } from '../lib/rules'
+import { ENERGY_TITLE, ENERGY_TYPES, currentProcedure, isAutoCode, isLockable, nextPointCode, uid } from '../lib/rules'
 import { saveProcedure, uploadPhoto, type ProcedureDraft } from '../lib/api'
 import type { EnergyType, IsolationPoint } from '../lib/types'
 import { Button, Card, Empty, ErrorBox, Photo, PhotoInput, SectionHeader, TopBar, useAction } from '../components/ui'
@@ -36,11 +36,15 @@ export default function ProcedureEditor() {
   const [d, setD] = useState<ProcedureDraft>(() => existing ? {
     name: existing.name, review_interval_months: existing.review_interval_months, ppe: [...existing.ppe],
     preparation: existing.preparation.map((s) => ({ ...s })), points: existing.points.map((p) => ({ ...p })), restoration: [...existing.restoration],
+    overview_photo_path: existing.overview_photo_path ?? null,
   } : {
-    name: e ? `LOTO postup – ${e.name}` : '', review_interval_months: 12, ppe: [], preparation: [],
-    points: (e?.energy_sources ?? []).map((s, i) => ({ id: uid(), code: `P${String(i + 1).padStart(2, '0')}`, name: '', energy: s.type, location: '', method: '', lock: '', verification: '', photo_path: null })),
-    restoration: [],
+    name: e ? `LOTO postup – ${e.name}` : '', review_interval_months: 36, ppe: [], preparation: [],
+    points: (e?.energy_sources ?? []).reduce<IsolationPoint[]>((acc, s) => [...acc, {
+      id: uid(), code: nextPointCode(s.type, acc.map((p) => p.code)), name: '', energy: s.type, location: '', method: '', lock: '', verification: '', photo_path: null,
+    }], []),
+    restoration: [], overview_photo_path: null,
   })
+  const [overview, setOverview] = useState<File | null>(null)
   const [summary, setSummary] = useState('')
   const [photos, setPhotos] = useState<Record<string, File | null>>({})
   const [newPPE, setNewPPE] = useState('')
@@ -48,10 +52,16 @@ export default function ProcedureEditor() {
   if (!e) return <div className="page"><TopBar title="LOTO postup" /><Empty title="Zařízení nenalezeno" /></div>
 
   const setPoint = (i: number, patch: Partial<IsolationPoint>) => setD({ ...d, points: d.points.map((p, j) => j === i ? { ...p, ...patch } : p) })
+  const setEnergy = (i: number, energy: EnergyType) => {
+    const p = d.points[i]
+    const others = d.points.filter((_, j) => j !== i).map((x) => x.code)
+    setPoint(i, { energy, code: !p.code.trim() || isAutoCode(p.code) ? nextPointCode(energy, others) : p.code })
+  }
 
   const save = () => act.run(async () => {
     const points = await Promise.all(d.points.map(async (p) => photos[p.id] ? { ...p, photo_path: await uploadPhoto(ctx, photos[p.id]!) } : p))
-    const saved = await saveProcedure(ctx, existing, e, { ...d, points }, summary)
+    const overview_photo_path = overview ? await uploadPhoto(ctx, overview) : d.overview_photo_path
+    const saved = await saveProcedure(ctx, existing, e, { ...d, points, overview_photo_path }, summary)
     await app.refresh()
     navigate(`/procedure/${saved.id}`, { replace: true })
   })
@@ -61,7 +71,7 @@ export default function ProcedureEditor() {
       <TopBar title={existing ? 'Upravit LOTO postup' : 'Vytvořit LOTO postup'} />
       <Card>
         <div className="field"><label>Název postupu</label><input className="input" value={d.name} onChange={(ev) => setD({ ...d, name: ev.target.value })} /></div>
-        <div className="field"><label>Interval revize (měsíce)</label><input className="input" type="number" min={1} max={36} value={d.review_interval_months} onChange={(ev) => setD({ ...d, review_interval_months: Number(ev.target.value) || 12 })} /></div>
+        <div className="field"><label>Interval revize (měsíce, nejvýše 36)</label><input className="input" type="number" min={1} max={36} value={d.review_interval_months} onChange={(ev) => setD({ ...d, review_interval_months: Math.min(36, Number(ev.target.value) || 36) })} /></div>
         {existing && <div className="tiny">Aktuální revize {existing.revision}. Uložením vznikne revize {existing.revision + 1}, kterou je nutné znovu schválit.</div>}
       </Card>
 
@@ -76,40 +86,50 @@ export default function ProcedureEditor() {
         </div>
       </Card>
 
-      <SectionHeader title="Přípravné kroky" />
+      <SectionHeader title="Přehledová fotografie nebo nákres" />
+      <Card>
+        <div className="tiny">Celkový pohled na zařízení, na kterém je vidět poloha všech izolačních bodů a jejich kódy. Tiskne se na kartu k zařízení.</div>
+        {d.overview_photo_path && !overview && <Photo path={d.overview_photo_path} height={160} />}
+        <PhotoInput file={overview} onChange={setOverview} />
+      </Card>
+
+      <SectionHeader title="Upozornění a kroky před zajištěním" />
+      <div className="tiny">Označená upozornění se na kartě tisknou v červeném rámečku, ostatní kroky jako „Před zajištěním“.</div>
       {d.preparation.map((s, i) => (
         <Card key={i}>
           <div className="row"><b className="grow">Krok {i + 1}</b><Reorder onUp={() => setD({ ...d, preparation: move(d.preparation, i, -1) })} onDown={() => setD({ ...d, preparation: move(d.preparation, i, 1) })} onDelete={() => setD({ ...d, preparation: d.preparation.filter((_, j) => j !== i) })} /></div>
           <input className="input" placeholder="Název kroku" value={s.title} onChange={(ev) => setD({ ...d, preparation: d.preparation.map((x, j) => j === i ? { ...x, title: ev.target.value } : x) })} />
           <textarea className="input" placeholder="Podrobný pokyn" value={s.detail} onChange={(ev) => setD({ ...d, preparation: d.preparation.map((x, j) => j === i ? { ...x, detail: ev.target.value } : x) })} />
+          <label className="check"><input type="checkbox" checked={!!s.warning} onChange={(ev) => setD({ ...d, preparation: d.preparation.map((x, j) => j === i ? { ...x, warning: ev.target.checked } : x) })} /><span>Upozornění na specifické riziko</span></label>
         </Card>
       ))}
       <Button variant="secondary" onClick={() => setD({ ...d, preparation: [...d.preparation, { title: '', detail: '' }] })}><Plus size={18} /> Přidat přípravný krok</Button>
 
       <SectionHeader title="Izolační body" />
-      <div className="tiny">Pořadí bodů určuje pořadí izolace v průvodci.</div>
+      <div className="tiny">Pořadí bodů určuje pořadí izolace v průvodci i na kartě. Kód = písmeno energie a číslo (E1 elektro, P1 vzduch, H1 hydraulika, W1 voda a média, G1 plyn, M1 mechanické a gravitační zajištění). Při více uzamykacích bodech se body zamykají terénními zámky a klíče jdou do LOTO boxu.</div>
       {d.points.map((p, i) => (
         <Card key={p.id}>
           <div className="row"><b className="grow">Bod {i + 1}</b><Reorder onUp={() => setD({ ...d, points: move(d.points, i, -1) })} onDown={() => setD({ ...d, points: move(d.points, i, 1) })} onDelete={() => setD({ ...d, points: d.points.filter((_, j) => j !== i) })} /></div>
           <div className="btn-row">
-            <input className="input mono" placeholder="Kód (Q01)" value={p.code} onChange={(ev) => setPoint(i, { code: ev.target.value.toUpperCase() })} />
-            <select className="input" value={p.energy} onChange={(ev) => setPoint(i, { energy: ev.target.value as EnergyType })}>
+            <input className="input mono" placeholder="Kód (E1)" value={p.code} onChange={(ev) => setPoint(i, { code: ev.target.value.toUpperCase() })} />
+            <select className="input" value={p.energy} onChange={(ev) => setEnergy(i, ev.target.value as EnergyType)}>
               {ENERGY_TYPES.map((t) => <option key={t} value={t}>{ENERGY_TITLE[t]}</option>)}
             </select>
           </div>
-          <input className="input" placeholder="Název bodu" value={p.name} onChange={(ev) => setPoint(i, { name: ev.target.value })} />
+          <input className="input" placeholder="Název bodu (např. Hlavní vypínač v rozvaděči RJ)" value={p.name} onChange={(ev) => setPoint(i, { name: ev.target.value })} />
           <input className="input" placeholder="Umístění" value={p.location} onChange={(ev) => setPoint(i, { location: ev.target.value })} />
-          <input className="input" placeholder="Metoda izolace" value={p.method} onChange={(ev) => setPoint(i, { method: ev.target.value })} />
-          <input className="input" placeholder="Požadovaný zámek" value={p.lock} onChange={(ev) => setPoint(i, { lock: ev.target.value })} />
-          <input className="input" placeholder="Ověření" value={p.verification} onChange={(ev) => setPoint(i, { verification: ev.target.value })} />
-          <div className="tiny">Referenční fotografie</div>
+          <input className="input" placeholder="Způsob izolace" value={p.method} onChange={(ev) => setPoint(i, { method: ev.target.value })} />
+          <label className="check"><input type="checkbox" checked={isLockable(p)} onChange={(ev) => setPoint(i, { lockable: ev.target.checked })} /><span>Bod se uzamyká (odškrtněte např. u odložení břemene nebo odvzdušnění)</span></label>
+          <input className="input" placeholder={isLockable(p) ? 'LOTO prvek (např. uzávěr jističe, uzávěr kohoutu)' : 'Zajištění (např. visačka, kontrola)'} value={p.lock} onChange={(ev) => setPoint(i, { lock: ev.target.value })} />
+          <input className="input" placeholder="Způsob ověření nulového stavu (např. manometr 0 bar)" value={p.verification} onChange={(ev) => setPoint(i, { verification: ev.target.value })} />
+          <div className="tiny">Fotografie bodu (detail ovládacího prvku)</div>
           {p.photo_path && !photos[p.id] && <Photo path={p.photo_path} height={120} />}
           <PhotoInput file={photos[p.id] ?? null} onChange={(f) => setPhotos({ ...photos, [p.id]: f })} />
         </Card>
       ))}
-      <Button variant="secondary" onClick={() => setD({ ...d, points: [...d.points, { id: uid(), code: `P${String(d.points.length + 1).padStart(2, '0')}`, name: '', energy: 'electrical', location: '', method: '', lock: '', verification: '', photo_path: null }] })}><Plus size={18} /> Přidat izolační bod</Button>
+      <Button variant="secondary" onClick={() => setD({ ...d, points: [...d.points, { id: uid(), code: nextPointCode('electrical', d.points.map((x) => x.code)), name: '', energy: 'electrical', location: '', method: '', lock: '', verification: '', photo_path: null }] })}><Plus size={18} /> Přidat izolační bod</Button>
 
-      <SectionHeader title="Specifické kroky obnovení" />
+      <SectionHeader title="Uvolnění zařízení do provozu (v pořadí)" />
       {d.restoration.map((s, i) => (
         <div key={i} className="row">
           <input className="input" value={s} onChange={(ev) => setD({ ...d, restoration: d.restoration.map((x, j) => j === i ? ev.target.value : x) })} />

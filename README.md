@@ -15,11 +15,13 @@ Běží v prohlížeči na iPhonu i Androidu, dá se přidat na plochu jako apli
 
 ## Co umí
 
-- LOTO cyklus: zahájení s kontrolou (revize po termínu a neschválený postup blokují, závady a „vyžaduje revizi“ varují), průvodce krok za krokem, osobní zámek + povinná fotka u uzamčení, QR ověření bodu, TRY/TEST nulového stavu, řízená 9kroková obnova
+- LOTO cyklus: zahájení s kontrolou (revize po termínu a neschválený postup blokují, závady a „vyžaduje revizi“ varují), průvodce krok za krokem, povinná fotka u uzamčení, QR ověření bodu, ověření nulového stavu podle bodů postupu, řízená 9kroková obnova
+- více uzamykacích bodů: terénní zámky na bodech, klíče do LOTO boxu, box se zamyká osobním zámkem; jediný bod se zamyká přímo osobním zámkem
+- kódy izolačních bodů podle energie (E elektro, P vzduch, H hydraulika, W voda a média, G plyn, M mechanické a gravitační zajištění) s barvami na kartě i štítcích
 - aktivní LOTO s časovou osou, účastníky a zámky; předání směny s checklistem; živé změny od kolegů
 - zařízení, postupy (revize při každé změně, schvalování HSE, kontrola úplnosti), periodické revize a úkoly
 - závady a poznámky se závažností, auditní stopa (jen přidávání), hledání bez diakritiky
-- PDF záznam LOTO a arch QR štítků (tiskem – „Uložit jako PDF“)
+- jednostránková karta LOTO postupu k vyvěšení u zařízení (A4 na výšku, přehledová fotka, upozornění, tabulka bodů, ověření, uvolnění do provozu), PDF záznam LOTO a arch QR štítků (tiskem – „Uložit jako PDF“)
 - role: pracovník vidí jen svá LOTO, vedoucí svůj závod, HSE vše a spravuje registr
 
 ## Vývoj

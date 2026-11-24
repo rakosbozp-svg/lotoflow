@@ -1,6 +1,6 @@
 // Doménová pravidla LOTO – stejná jako v iOS aplikaci.
 import type {
-  EnergyType, Equipment, Loto, Procedure, ProcedureStatus, Profile, ReviewState, Role, Severity, Defect, LotoStatus,
+  EnergyType, Equipment, IsolationPoint, Loto, Procedure, ProcedureStatus, Profile, ReviewState, Role, Severity, Defect, LotoStatus,
 } from './types'
 
 export const ROLE_TITLE: Record<Role, string> = {
@@ -13,6 +13,8 @@ export const ENERGY_TITLE: Record<EnergyType, string> = {
   electrical: 'Elektrická',
   pneumatic: 'Pneumatická',
   hydraulic: 'Hydraulická',
+  water: 'Voda a procesní média',
+  gas: 'Plyn a paliva',
   mechanical: 'Mechanická',
   thermal: 'Tepelná',
   gravitational: 'Gravitační',
@@ -20,6 +22,41 @@ export const ENERGY_TITLE: Record<EnergyType, string> = {
   stored: 'Akumulovaná / zbytková',
 }
 export const ENERGY_TYPES = Object.keys(ENERGY_TITLE) as EnergyType[]
+
+/** Písmeno kódu izolačního bodu podle druhu energie (E1, P1, H1, W1, G1, M1). */
+export const ENERGY_CODE: Record<EnergyType, string> = {
+  electrical: 'E', pneumatic: 'P', hydraulic: 'H', water: 'W', gas: 'G',
+  mechanical: 'M', gravitational: 'M', stored: 'M', thermal: 'W', chemical: 'W',
+}
+/** Barva štítku izolačního bodu podle písmena kódu. */
+export const CODE_COLOR: Record<string, { bg: string; fg: string; title: string }> = {
+  E: { bg: '#C62828', fg: '#FFFFFF', title: 'elektrická energie' },
+  P: { bg: '#1565C0', fg: '#FFFFFF', title: 'stlačený vzduch' },
+  H: { bg: '#F9A825', fg: '#1C2536', title: 'hydraulika' },
+  W: { bg: '#2E7D32', fg: '#FFFFFF', title: 'voda a procesní média' },
+  G: { bg: '#EF6C00', fg: '#FFFFFF', title: 'plyn a paliva' },
+  M: { bg: '#546E7A', fg: '#FFFFFF', title: 'mechanické a gravitační zajištění' },
+}
+export function codeColor(code: string, energy?: EnergyType) {
+  const c = code.trim().toUpperCase()
+  const byLetter = CODE_COLOR[c[0] ?? '']
+  const byEnergy = energy ? CODE_COLOR[ENERGY_CODE[energy]] : undefined
+  // Kód podle směrnice (E1, P2…) určuje barvu sám; starší kódy (Q01, P01…) se barví podle druhu energie.
+  if (byLetter && (/^[A-Z]\d$/.test(c) || !byEnergy)) return byLetter
+  return byEnergy ?? byLetter ?? { bg: '#455A64', fg: '#FFFFFF', title: '' }
+}
+/** Další volný kód bodu pro danou energii, např. P2, když už existuje P1. */
+export function nextPointCode(energy: EnergyType, existing: string[]): string {
+  const letter = ENERGY_CODE[energy]
+  const used = new Set(existing.map((c) => c.trim().toUpperCase()))
+  let n = 1
+  while (used.has(`${letter}${n}`)) n++
+  return `${letter}${n}`
+}
+/** Kód vytvořený automaticky (písmeno energie + číslo, nebo dřívější výchozí P01). */
+export const isAutoCode = (code: string) => /^([EPHWGM]\d{1,2}|P\d{2})$/.test(code.trim().toUpperCase())
+/** Bod, na který se umisťuje zámek. */
+export const isLockable = (p: Pick<IsolationPoint, 'lockable'>) => p.lockable !== false
 
 export const PROCEDURE_STATUS_TITLE: Record<ProcedureStatus, string> = {
   draft: 'Rozpracováno',
@@ -53,12 +90,21 @@ export const SEVERITY_RANK: Record<Severity, number> = { note: 0, minor: 1, majo
 export const SAFETY_NOTICE =
   'LOTOFLOW eviduje a řídí provádění schváleného postupu, ale nenahrazuje fyzickou izolaci, uzamčení a ověření nulového energetického stavu na zařízení.'
 
+/** Obecné body ověření – použijí se jen u postupu, který nemá u bodů uveden způsob ověření. */
 export const ZERO_ENERGY_CHECKS = [
   'Pokus o spuštění – zařízení se nerozběhlo',
-  'Nulový tlak ověřen na manometrech',
   'Pohyblivé části jsou v klidu a zajištěny',
   'Zbytková a akumulovaná energie uvolněna',
 ]
+export const ZERO_CHECK_START = 'Pokus o spuštění všemi ovládacími prvky – zařízení nereaguje'
+export const ZERO_CHECK_NEUTRAL = 'Ovládací prvky vráceny do neutrální / vypnuté polohy'
+
+/** Ověření nulového stavu podle konkrétního postupu: pokus o spuštění, ověření u každého bodu, neutrální poloha. */
+export function zeroChecksFor(p: Pick<Procedure, 'points'> | undefined): string[] {
+  const specific = (p?.points ?? []).filter((pt) => pt.verification.trim()).map((pt) => `${pt.code}: ${pt.verification.trim()}`)
+  if (!specific.length) return [...ZERO_ENERGY_CHECKS, ZERO_CHECK_NEUTRAL]
+  return [ZERO_CHECK_START, ...specific, ZERO_CHECK_NEUTRAL]
+}
 
 export const HANDOVER_CHECKS = [
   'Stav izolace všech bodů zkontrolován',
@@ -74,7 +120,7 @@ export const RESTORATION_SEQUENCE: { title: string; text: string }[] = [
   { title: 'Kontrola prostoru', text: 'Zkontrolujte, že v nebezpečném prostoru zařízení nikdo není.' },
   { title: 'Potvrzení přítomných osob', text: 'Ověřte, že všichni účastníci jsou mimo nebezpečný prostor a o obnově vědí.' },
   { title: 'Odstranění osobních zámků', text: 'Každý účastník odstraní svůj osobní zámek a visačku.' },
-  { title: 'Obnovení energií', text: 'Obnovte zdroje energie v opačném pořadí, než byly izolovány.' },
+  { title: 'Obnovení energií', text: 'Otevřete LOTO box, odstraňte terénní zámky a LOTO prvky a obnovte zdroje energie v pořadí stanoveném LOTO postupem.' },
   { title: 'Informování dotčených osob', text: 'Informujte obsluhu a vedoucího směny, že zařízení je vráceno do provozu.' },
   { title: 'Standardní spuštění', text: 'Spusťte zařízení standardním postupem a ověřte jeho správnou funkci.' },
 ]
@@ -198,15 +244,18 @@ export function missingItems(p: Procedure, e: Equipment | undefined): string[] {
   if (p.ppe.length === 0) missing.push('Nejsou uvedeny osobní ochranné prostředky')
   if (p.preparation.length === 0) missing.push('Chybí přípravné kroky')
   if (p.points.length === 0) missing.push('Postup nemá žádný izolační bod')
+  if (!p.overview_photo_path) missing.push('Chybí přehledová fotografie nebo nákres zařízení s vyznačenými izolačními body')
   for (const pt of p.points) {
-    if (!pt.location.trim() || !pt.method.trim() || !pt.lock.trim()) {
-      missing.push(`Bod ${pt.code || pt.name} nemá vyplněné umístění, metodu izolace nebo požadovaný zámek`)
+    if (!pt.location.trim() || !pt.method.trim() || (isLockable(pt) && !pt.lock.trim())) {
+      missing.push(`Bod ${pt.code || pt.name} nemá vyplněné umístění, způsob izolace nebo LOTO prvek`)
     }
+    if (!pt.verification.trim()) missing.push(`Bod ${pt.code || pt.name} nemá vyplněný způsob ověření`)
+    if (!pt.photo_path) missing.push(`Bod ${pt.code || pt.name} nemá fotografii`)
   }
   if (e) {
     if (e.energy_sources.length === 0) missing.push('Zařízení nemá evidované zdroje energie')
     const covered = new Set(p.points.map((pt) => pt.energy))
-    const exempt: EnergyType[] = ['stored', 'gravitational', 'mechanical']
+    const exempt: EnergyType[] = ['stored', 'gravitational', 'mechanical', 'thermal']
     for (const t of new Set(e.energy_sources.map((s) => s.type))) {
       if (!covered.has(t) && !exempt.includes(t)) missing.push(`Zdroj energie ${ENERGY_TITLE[t]} nemá izolační bod`)
     }

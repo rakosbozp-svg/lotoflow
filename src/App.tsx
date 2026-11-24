@@ -7,6 +7,7 @@ import Home from './screens/Home'
 import EquipmentList from './screens/EquipmentList'
 import EquipmentDetail from './screens/EquipmentDetail'
 import ProcedureView from './screens/ProcedureView'
+import ProcedureCard from './screens/ProcedureCard'
 import StartLoto from './screens/StartLoto'
 import Guide from './screens/Guide'
 import LotoList from './screens/LotoList'
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/equipment/:id" element={<EquipmentDetail />} />
         <Route path="/equipment/:id/start" element={<StartLoto />} />
         <Route path="/procedure/:id" element={<ProcedureView />} />
+        <Route path="/procedure/:id/card" element={<ProcedureCard />} />
         <Route path="/loto" element={<LotoList />} />
         <Route path="/loto/:id" element={<LotoDetail />} />
         <Route path="/loto/:id/guide" element={<Guide />} />

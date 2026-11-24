@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { fold, lockNumber, matches, missingItems, parseQR, preflight, reviewState } from './rules'
+import {
+  ZERO_CHECK_NEUTRAL, ZERO_CHECK_START, codeColor, fold, isAutoCode, lockNumber, matches, missingItems, nextPointCode, parseQR, preflight, reviewState, zeroChecksFor,
+} from './rules'
 import type { Defect, Equipment, Procedure } from './types'
 
 const equipment: Equipment = {
@@ -12,8 +14,8 @@ const procedure = (over: Partial<Procedure> = {}): Procedure => ({
   approver_name: 'X', approved_at: '2026-01-01', next_review_date: new Date(Date.now() + 200 * 864e5).toISOString(),
   last_reviewed_at: null, last_reviewed_by: null, review_interval_months: 12, ppe: ['Brýle'],
   preparation: [{ title: 'Stop', detail: '' }], restoration: ['Zapnout'],
-  points: [{ id: 'q', code: 'Q01', name: 'Vypínač', energy: 'electrical', location: 'RM', method: '0', lock: 'Zámek', verification: '' }],
-  revisions: [], updated_at: '', ...over,
+  points: [{ id: 'q', code: 'E1', name: 'Vypínač', energy: 'electrical', location: 'RM', method: '0', lock: 'Uzávěr vypínače', verification: 'Pokus o spuštění', photo_path: 'f/e1.jpg' }],
+  revisions: [], updated_at: '', overview_photo_path: 'f/prehled.jpg', ...over,
 })
 
 describe('QR', () => {
@@ -72,5 +74,54 @@ describe('úplnost postupu', () => {
     expect(missingItems(procedure(), equipment)).toEqual([])
     expect(missingItems(procedure({ ppe: [], restoration: [] }), equipment).length).toBe(2)
     expect(missingItems(procedure({ points: [] }), equipment).length).toBe(2)
+  })
+})
+
+describe('úplnost postupu podle karty', () => {
+  it('vyžaduje přehledovou fotografii, fotografii a ověření u bodu', () => {
+    const m = missingItems(procedure({ overview_photo_path: null, points: [{ ...procedure().points[0], photo_path: null, verification: '' }] }), equipment)
+    expect(m).toHaveLength(3)
+  })
+  it('neuzamykaný bod nepotřebuje LOTO prvek', () => {
+    const odlozeni = { id: 'm', code: 'M1', name: 'Odložení břemene', energy: 'gravitational' as const, location: 'Chapadlo', method: 'Odložit', lock: '', verification: 'Chapadlo prázdné', photo_path: 'f/m1.jpg', lockable: false }
+    expect(missingItems(procedure({ points: [...procedure().points, odlozeni] }), equipment)).toEqual([])
+    expect(missingItems(procedure({ points: [...procedure().points, { ...odlozeni, lockable: true }] }), equipment)).toHaveLength(1)
+  })
+})
+
+describe('kódy izolačních bodů', () => {
+  it('čísluje podle druhu energie', () => {
+    expect(nextPointCode('electrical', [])).toBe('E1')
+    expect(nextPointCode('pneumatic', ['E1', 'P1'])).toBe('P2')
+    expect(nextPointCode('gravitational', ['E1'])).toBe('M1')
+    expect(nextPointCode('water', [])).toBe('W1')
+    expect(nextPointCode('gas', [])).toBe('G1')
+  })
+  it('rozliší automatický a ručně zadaný kód', () => {
+    expect(isAutoCode('P01')).toBe(true)
+    expect(isAutoCode('E2')).toBe(true)
+    expect(isAutoCode('RM-04')).toBe(false)
+  })
+  it('barví podle kódu, starší kódy podle energie', () => {
+    expect(codeColor('P2', 'stored').bg).toBe('#1565C0')
+    expect(codeColor('E1', 'electrical').bg).toBe('#C62828')
+    expect(codeColor('P01', 'electrical').bg).toBe('#C62828')
+    expect(codeColor('Q01', 'electrical').bg).toBe('#C62828')
+    expect(codeColor('H1').fg).toBe('#1C2536')
+  })
+})
+
+describe('ověření nulového stavu', () => {
+  it('skládá se z ověření u jednotlivých bodů', () => {
+    const p = procedure({ points: [
+      { ...procedure().points[0], code: 'E1', verification: 'Pokus o spuštění tlačítkem START' },
+      { ...procedure().points[0], id: 'p', code: 'P1', energy: 'pneumatic', verification: 'Manometr 0 bar' },
+    ] })
+    expect(zeroChecksFor(p)).toEqual([ZERO_CHECK_START, 'E1: Pokus o spuštění tlačítkem START', 'P1: Manometr 0 bar', ZERO_CHECK_NEUTRAL])
+  })
+  it('bez ověření u bodů použije obecné body', () => {
+    const p = procedure({ points: [{ ...procedure().points[0], verification: '' }] })
+    expect(zeroChecksFor(p)).toContain(ZERO_CHECK_NEUTRAL)
+    expect(zeroChecksFor(p).some((c) => c.includes('manometr'))).toBe(false)
   })
 })

@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { CalendarCheck, CheckCircle, Pencil, Send, ShieldCheck, ShieldHalf } from 'lucide-react'
+import { CalendarCheck, CheckCircle, Pencil, Printer, Send, ShieldCheck, ShieldHalf } from 'lucide-react'
 import { useApp, useCtx } from '../lib/store'
-import { PROCEDURE_STATUS_TITLE, RESTORATION_SEQUENCE, REVIEW_TITLE, ZERO_ENERGY_CHECKS, fmtDate, procedureReviewState } from '../lib/rules'
+import { PROCEDURE_STATUS_TITLE, RESTORATION_SEQUENCE, REVIEW_TITLE, fmtDate, procedureReviewState, zeroChecksFor } from '../lib/rules'
 import { approveProcedure, performReview, submitProcedure } from '../lib/api'
 import { Badge, Banner, Button, Card, Divider, Empty, ErrorBox, KV, SafetyNotice, SectionHeader, TopBar, useAction } from '../components/ui'
 import { procTone } from '../components/rows'
@@ -70,6 +70,7 @@ export default function ProcedureView() {
       {role === 'hse' && (p.status === 'pendingApproval' || p.status === 'draft') && (
         <Button variant="success" disabled={act.busy} onClick={() => go(() => approveProcedure(ctx, p, e, app.procedures), 'Postup je schválen a naplánována příští revize.')}><CheckCircle size={18} /> Schválit postup</Button>
       )}
+      {e && <Button variant="secondary" onClick={() => navigate(`/procedure/${p.id}/card`)}><Printer size={18} /> Karta k zařízení (tisk)</Button>}
       {role === 'hse' && e && <Button variant="secondary" onClick={() => navigate(`/admin/procedure/${e.id}`)}><Pencil size={18} /> Upravit LOTO postup</Button>}
       {role !== 'worker' && p.status === 'approved' && (reviewing ? (
         <Card>
@@ -95,7 +96,7 @@ export default function ProcedureView() {
       {p.points.map((pt, i) => <PointCard key={pt.id} point={pt} machineCode={e?.code ?? ''} index={i + 1} />)}
 
       <SectionHeader title="Ověření nulového energetického stavu" />
-      <Card>{ZERO_ENERGY_CHECKS.map((c) => <div key={c} className="row small"><ShieldCheck size={18} color="var(--success)" />{c}</div>)}</Card>
+      <Card>{zeroChecksFor(p).map((c) => <div key={c} className="row small"><ShieldCheck size={18} color="var(--success)" />{c}</div>)}</Card>
 
       <SectionHeader title="Sekvence obnovení" />
       <Card>
