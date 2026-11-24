@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Check, Lock, QrCode, ShieldCheck, X } from 'lucide-react'
 import { useApp, useCtx } from '../lib/store'
-import { ZERO_ENERGY_CHECKS, lockNumber, pointQR, fmtTime } from '../lib/rules'
+import { lockNumber, pointQR, fmtTime, zeroChecksFor } from '../lib/rules'
 import { confirmStep, lockoutSteps, nextLockout, uploadPhoto, verifyPoint, verifyZeroEnergy } from '../lib/api'
 import type { Loto } from '../lib/types'
 import { Badge, Banner, Button, Card, Empty, ErrorBox, PhotoInput, SafetyNotice, SectionHeader, useAction } from '../components/ui'
@@ -40,7 +40,7 @@ export default function Guide() {
   const [checks, setChecks] = useState<string[]>([])
 
   useEffect(() => {
-    setLock(lockNumber(app.profile!))
+    setLock(step?.lock_kind === 'field' ? '' : lockNumber(app.profile!))
     setPhoto(null)
     setQr(step?.qr ? { ok: true, message: `QR kód bodu ${step.point_code} ověřen` } : null)
     setScanning(false)
@@ -52,6 +52,8 @@ export default function Guide() {
   const number = steps.filter((s) => s.done).length + 1
   const procedure = app.procedures.find((p) => p.id === loto.procedure_id)
   const point = procedure?.points.find((p) => p.id === step?.point_id)
+  const zeroChecks = zeroChecksFor(procedure)
+  const fieldLock = step?.lock_kind === 'field'
 
   const confirm = () => act.run(async () => {
     if (!step) return
@@ -83,7 +85,7 @@ export default function Guide() {
                   <Card>
                     <QrScanner
                       hint={`Naskenujte QR štítek bodu ${step.point_code} – ${step.point_name}.`}
-                      demoCodes={[pointQR(loto.equipment_code, step.point_code ?? ''), ...(procedure?.points ?? []).filter((p) => p.code !== step.point_code).map((p) => pointQR(loto.equipment_code, p.code)), 'LOTOPOINT:LIS-002:Q01', 'NEZNAMY-KOD-123']}
+                      demoCodes={[pointQR(loto.equipment_code, step.point_code ?? ''), ...(procedure?.points ?? []).filter((p) => p.code !== step.point_code).map((p) => pointQR(loto.equipment_code, p.code)), 'LOTOPOINT:LIS-002:E1', 'NEZNAMY-KOD-123']}
                       onCode={async (raw) => {
                         const r = await verifyPoint(ctx, loto.id, step.id, raw)
                         setQr(r)
@@ -103,9 +105,11 @@ export default function Guide() {
 
             {step.kind === 'lockout' && (
               <>
-                <SectionHeader title="Osobní zámek" />
-                <input className="input mono" style={{ fontSize: 20, fontWeight: 600 }} value={lock} onChange={(e) => setLock(e.target.value.toUpperCase())} placeholder="Číslo zámku, např. JN-417" />
-                <div className="tiny">Váš osobní zámek: {lockNumber(app.profile!)} ({app.profile!.full_name})</div>
+                <SectionHeader title={fieldLock ? 'Terénní zámek' : step.lockbox ? 'Osobní zámek na LOTO box' : 'Osobní zámek'} />
+                <input className="input mono" style={{ fontSize: 20, fontWeight: 600 }} value={lock} onChange={(e) => setLock(e.target.value.toUpperCase())} placeholder={fieldLock ? 'Číslo terénního zámku, např. T-03' : 'Číslo zámku, např. JN-417'} />
+                <div className="tiny">{fieldLock
+                  ? 'Terénní zámek je z LOTO stanice. Klíč po uzamčení vložte do LOTO boxu – nenoste jej u sebe.'
+                  : `Váš osobní zámek: ${lockNumber(app.profile!)} (${app.profile!.full_name})`}</div>
                 <SectionHeader title="Fotografie uzamčení (povinné)" />
                 <PhotoInput file={photo} onChange={setPhoto} required />
               </>
@@ -116,7 +120,7 @@ export default function Guide() {
               {step.kind === 'lockout' ? <Lock size={20} /> : <Check size={20} />}
               {act.busy ? 'Ukládám…' : step.kind === 'lockout' ? 'Potvrdit uzamčení' : step.kind === 'isolation' ? 'Potvrdit izolaci' : 'Potvrdit krok'}
             </Button>
-            {step.kind === 'lockout' && !canConfirm && <div className="tiny">Pro potvrzení uzamčení je nutné číslo osobního zámku a fotografie.</div>}
+            {step.kind === 'lockout' && !canConfirm && <div className="tiny">Pro potvrzení uzamčení je nutné číslo zámku a fotografie.</div>}
           </>
         )}
 
@@ -124,9 +128,9 @@ export default function Guide() {
           <>
             <div><Badge text="TRY / TEST" tone="success" /></div>
             <h2 className="h2">Ověření nulového energetického stavu</h2>
-            <div className="muted">Než povolíte práci, ověřte na zařízení, že žádná energie nemůže způsobit pohyb, výboj ani únik. Po ověření vraťte ovládací prvky do polohy VYP.</div>
+            <div className="muted">Než povolíte práci, ověřte na zařízení způsobem podle LOTO postupu, že žádná energie nemůže způsobit pohyb, výboj ani únik. Potvrďte jen to, co jste skutečně ověřili.</div>
             <Card tight>
-              {ZERO_ENERGY_CHECKS.map((c) => (
+              {zeroChecks.map((c) => (
                 <label key={c} className="check">
                   <input type="checkbox" checked={checks.includes(c)} onChange={(e) => setChecks(e.target.checked ? [...checks, c] : checks.filter((x) => x !== c))} />
                   <span style={{ fontWeight: 500 }}>{c}</span>
@@ -134,7 +138,7 @@ export default function Guide() {
               ))}
             </Card>
             <ErrorBox message={act.error} />
-            <Button variant="success" disabled={checks.length < ZERO_ENERGY_CHECKS.length || act.busy} onClick={() => act.run(async () => { await verifyZeroEnergy(ctx, loto.id, checks); await app.refresh() })}>
+            <Button variant="success" disabled={!zeroChecks.every((c) => checks.includes(c)) || act.busy} onClick={() => act.run(async () => { await verifyZeroEnergy(ctx, loto.id, zeroChecks, checks); await app.refresh() })}>
               <ShieldCheck size={20} /> Potvrdit nulový stav a povolit práci
             </Button>
           </>

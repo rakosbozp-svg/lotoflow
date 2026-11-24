@@ -13,7 +13,7 @@ export const ACTION_TITLE: Record<string, string> = {
   procedureCreated: 'Postup vytvořen', procedureEdited: 'Postup upraven', procedureSubmitted: 'Odesláno ke schválení',
   procedureApproved: 'Postup schválen', procedureApprovalBlocked: 'Schválení zablokováno', procedureNeedsRevision: 'Postup vyžaduje revizi',
   reviewCompleted: 'Revize provedena', equipmentCreated: 'Zařízení přidáno', equipmentEdited: 'Zařízení upraveno',
-  energySourcesChanged: 'Změna zdrojů energie', reportExported: 'PDF záznam vytvořen', labelsPrinted: 'QR štítky vytvořeny',
+  energySourcesChanged: 'Změna zdrojů energie', reportExported: 'PDF záznam vytvořen', labelsPrinted: 'QR štítky vytvořeny', cardPrinted: 'Karta LOTO postupu vytištěna',
   organizationEdited: 'Organizace upravena', userEdited: 'Osoba upravena', userDeactivated: 'Osoba deaktivována',
   demoSeeded: 'Demo data', defectReported: 'Závada zapsána', defectResolved: 'Závada vyřešena',
 }

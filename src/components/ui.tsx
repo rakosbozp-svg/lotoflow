@@ -2,8 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertOctagon, AlertTriangle, Camera, CheckCircle2, ChevronLeft, ChevronRight, Hand, Image as ImageIcon, Info, X,
-  Zap, Wind, Droplet, Cog, Thermometer, ArrowDownToLine, FlaskConical, BatteryCharging,
-} from 'lucide-react'
+  Zap, Wind, Droplet, Cog, Thermometer, ArrowDownToLine, FlaskConical, BatteryCharging, Waves, Flame } from 'lucide-react'
 import type { EnergyType } from '../lib/types'
 import { SAFETY_NOTICE, initials as toInitials } from '../lib/rules'
 import { photoUrl } from '../lib/api'
@@ -135,7 +134,7 @@ export function Avatar({ name, tone = 'accent' }: { name: string; tone?: Tone })
 
 export function EnergyIcon({ type, size = 20 }: { type: EnergyType; size?: number }) {
   const map = {
-    electrical: Zap, pneumatic: Wind, hydraulic: Droplet, mechanical: Cog, thermal: Thermometer,
+    electrical: Zap, pneumatic: Wind, hydraulic: Droplet, water: Waves, gas: Flame, mechanical: Cog, thermal: Thermometer,
     gravitational: ArrowDownToLine, chemical: FlaskConical, stored: BatteryCharging,
   }
   const Icon = map[type] ?? Zap
@@ -190,11 +189,11 @@ export function PhotoInput({ file, onChange, required }: { file: File | null; on
       <div className="btn-row">
         <label className="btn secondary small" style={{ cursor: 'pointer' }}>
           <Camera size={18} /> {file ? 'Vyfotit znovu' : 'Vyfotit'}
-          <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => onChange(e.target.files?.[0] ?? null)} />
+          <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => { onChange(e.target.files?.[0] ?? null); e.target.value = '' }} />
         </label>
         <label className="btn secondary small" style={{ cursor: 'pointer' }}>
           <ImageIcon size={18} /> Z knihovny
-          <input type="file" accept="image/*" hidden onChange={(e) => onChange(e.target.files?.[0] ?? null)} />
+          <input type="file" accept="image/*" hidden onChange={(e) => { onChange(e.target.files?.[0] ?? null); e.target.value = '' }} />
         </label>
       </div>
       {file && <button className="link-btn" style={{ color: 'var(--danger)' }} onClick={() => onChange(null)}>Odebrat fotografii</button>}

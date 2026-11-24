@@ -167,12 +167,14 @@ await step('zahájení LOTO', async () => {
   await page.getByText(/Krok 1 z/).waitFor()
   await shot('guide')
 })
-await step('průvodce: příprava, izolace s QR, uzamčení s fotkou', async () => {
-  for (let i = 0; i < 12; i++) {
+await step('průvodce: příprava, izolace s QR, terénní zámky a LOTO box', async () => {
+  let qrChecked = false, fieldLocks = 0, box = false
+  for (let i = 0; i < 14; i++) {
     if (await page.getByRole('heading', { name: 'Ověření nulového energetického stavu' }).count()) break
     const isLock = await page.getByRole('button', { name: /Potvrdit uzamčení/ }).count()
     const isIso = await page.getByRole('button', { name: /Potvrdit izolaci/ }).count()
-    if (isIso && i === 3) {
+    if (isIso && !qrChecked) {
+      qrChecked = true
       await page.getByRole('button', { name: /Ověřit bod QR kódem/ }).click()
       await page.getByRole('button', { name: /Simulovat sken/ }).click()
       await page.locator('.list-row.mono').nth(1).click()   // nesprávný bod
@@ -183,6 +185,13 @@ await step('průvodce: příprava, izolace s QR, uzamčení s fotkou', async () 
       await page.getByText(/QR kód bodu .* ověřen/).first().waitFor()
     }
     if (isLock) {
+      const lockInput = page.locator('input.input.mono').first()
+      if (await page.getByText('Terénní zámek', { exact: true }).count()) {
+        fieldLocks++
+        if (await lockInput.inputValue()) throw new Error('terénní zámek je předvyplněn osobním zámkem')
+        await lockInput.fill(`T-0${fieldLocks}`)
+      }
+      if (await page.getByText('Osobní zámek na LOTO box').count()) box = true
       if (!(await page.getByRole('button', { name: /Potvrdit uzamčení/ }).isDisabled())) throw new Error('uzamčení bez fotky povoleno')
       await page.locator('input[type=file][capture]').setInputFiles('./e2e-output/photo.png')
     }
@@ -195,9 +204,15 @@ await step('průvodce: příprava, izolace s QR, uzamčení s fotkou', async () 
     if ((await page.getByText(/Krok \d+ z/).count()) && before === await page.getByText(/Krok \d+ z/).first().textContent()) throw new Error('krok se neposunul: ' + before)
   }
   await page.getByRole('heading', { name: 'Ověření nulového energetického stavu' }).waitFor()
+  if (!qrChecked) throw new Error('kontrola QR kódu bodu neproběhla')
+  if (fieldLocks !== 2 || !box) throw new Error(`očekávány 2 terénní zámky a LOTO box, bylo ${fieldLocks} / ${box}`)
 })
-await step('ověření nulového stavu', async () => {
-  for (const cb of await page.locator('input[type=checkbox]').all()) await cb.check()
+await step('ověření nulového stavu podle postupu', async () => {
+  await page.getByText('P1: Manometr PI-03 ukazuje 0 bar.').waitFor()
+  const boxes = await page.locator('input[type=checkbox]').all()
+  for (const cb of boxes.slice(0, -1)) await cb.check()
+  if (!(await page.getByRole('button', { name: /Potvrdit nulový stav/ }).isDisabled())) throw new Error('nulový stav lze potvrdit bez všech bodů')
+  await boxes[boxes.length - 1].check()
   await page.getByRole('button', { name: /Potvrdit nulový stav/ }).click()
   await page.getByText('LOTO aktivní – práce povolena').waitFor()
   await page.getByRole('button', { name: /Hotovo/ }).click()
@@ -236,6 +251,24 @@ await step('HSE: revize Lisu 02 odblokuje zahájení', async () => {
   await page.getByRole('button', { name: /Provést revizi/ }).click()
   await page.getByRole('button', { name: /Potvrdit revizi/ }).click()
   await page.getByText('Revize byla zapsána.').waitFor()
+})
+
+await step('karta LOTO postupu k zařízení (tisk A4)', async () => {
+  const p = db.procedures.find((x) => x.name.includes('Míchačka 04'))
+  await page.goto(`http://localhost:4173/#/procedure/${p.id}`)
+  await page.getByRole('button', { name: /Karta k zařízení/ }).click()
+  await page.getByText('LOTO POSTUP ZAŘÍZENÍ').waitFor()
+  await page.getByText('⚠ UPOZORNĚNÍ').waitFor()
+  await page.getByText('E1: Pokus o spuštění tlačítkem START – stroj se nesmí rozběhnout.').waitFor()
+  await page.getByText(/2 terénní zámky \(žluté\) \+ LOTO box/).waitFor()
+  const before = await page.evaluate(() => window.__printed || 0)
+  await page.getByRole('button', { name: /Vytisknout kartu/ }).click()
+  await page.waitForTimeout(500)
+  if ((await page.evaluate(() => window.__printed || 0)) <= before) throw new Error('tisk karty se nespustil')
+  await shot('card')
+  await page.emulateMedia({ media: 'print' })
+  await page.pdf({ path: './e2e-output/karta.pdf', preferCSSPageSize: true, printBackground: true })
+  await page.emulateMedia({ media: 'screen' })
 })
 
 console.log('audit událostí:', db.audit_events.length, '| LOTO:', db.lotos.map((l) => l.status).join(','))
